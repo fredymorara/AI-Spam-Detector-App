@@ -13,11 +13,11 @@ import time
 st.set_page_config(
     page_title="Spam Message Detector",
     page_icon="📧",
-    layout="centered" # Use a centered layout for a cleaner look
+    layout="centered"
 )
 
-# --- NLTK Resource Management ---
-# This setup ensures NLTK data is available in the Streamlit Cloud environment.
+# --- NLTK Resource Management for Streamlit Cloud ---
+# This block defines a custom path and explicitly downloads all required packages.
 @st.cache_resource
 def setup_nltk():
     nltk_data_dir = os.path.join(os.getcwd(), "nltk_data")
@@ -27,17 +27,20 @@ def setup_nltk():
     if nltk_data_dir not in nltk.data.path:
         nltk.data.path.append(nltk_data_dir)
 
-    packages = ['stopwords', 'punkt', 'wordnet', 'omw-1.4']
+    # List of all packages needed, INCLUDING the problematic 'punkt_tab'
+    packages = ['stopwords', 'punkt', 'wordnet', 'omw-1.4', 'punkt_tab']
     for package in packages:
         try:
             # Check if the data is already in our custom path
-            resource_name = f"tokenizers/{package}" if package == "punkt" else f"corpora/{package}"
+            resource_name = f"tokenizers/{package}" if package in ['punkt', 'punkt_tab'] else f"corpora/{package}"
             nltk.data.find(resource_name)
         except LookupError:
+            # If not found, download it to our custom directory
             nltk.download(package, download_dir=nltk_data_dir, quiet=True)
 
 # Run the setup function once at app startup
 setup_nltk()
+
 
 # --- Preprocessing and Model Loading (Cached for performance) ---
 @st.cache_resource
@@ -55,9 +58,16 @@ def improved_preprocess_text(text):
     text = re.sub(r'\S*@\S*\s?', '', text)
     text = re.sub(r'\d+', '', text)
     text = text.translate(str.maketrans('', '', string.punctuation))
-    tokens = word_tokenize(text)
+    
+    try:
+        tokens = word_tokenize(text) # This should now find all necessary data
+    except Exception as e:
+        st.error(f"Tokenization failed: {e}")
+        return ""
+
     processed_tokens = [lemmatizer.lemmatize(word) for word in tokens if word.isalpha() and word not in stop_words_set]
     return " ".join(processed_tokens)
+
 
 @st.cache_resource
 def load_model():
@@ -66,14 +76,15 @@ def load_model():
             model_pipeline = pickle.load(file)
         return model_pipeline
     except Exception:
+        st.error("Model file 'spam_detector_svm_pipeline.pkl' not found.")
         return None
 
 model_pipeline = load_model()
 
-# --- Custom CSS for Styling (Safer Version) ---
+
+# --- Custom CSS for Styling ---
 st.markdown("""
 <style>
-    /* Style the button */
     .stButton>button {
         width: 100%;
         border-radius: 25px;
@@ -90,9 +101,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
 # --- App Interface ---
 st.title("📧 Spam Message Detector")
-st.markdown("Enter a message below to see if our AI model classifies it as **Spam** or **Ham**.")
+st.markdown("Enter a message to see if our AI model classifies it as **Spam** or **Ham**.")
 
 user_input = st.text_area(
     "Message to analyze:", 
@@ -103,7 +115,7 @@ user_input = st.text_area(
 if st.button("Analyze Message"):
     if model_pipeline and user_input.strip():
         with st.spinner('Analyzing...'):
-            time.sleep(1) # Simulate processing
+            time.sleep(1) 
             
             processed_input = improved_preprocess_text(user_input)
             prediction = model_pipeline.predict([processed_input])
@@ -117,6 +129,7 @@ if st.button("Analyze Message"):
         st.warning("Please enter a message before analyzing.")
     else:
         st.error("Model not loaded. Please check the application logs.")
+
 
 # --- Project Information Sidebar ---
 st.sidebar.title("About this Project")
