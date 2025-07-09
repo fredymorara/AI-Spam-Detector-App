@@ -1,4 +1,6 @@
 import streamlit as st
+from streamlit_lottie import st_lottie
+import requests
 import pickle
 import re
 import string
@@ -7,35 +9,38 @@ import os
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
+import time
 
-# --- NLTK Resource Management for Streamlit Cloud (Final Version) ---
-# Define a directory for NLTK data within the app's file system
+# --- Page and NLTK Setup ---
+st.set_page_config(page_title="Spam Detector", page_icon="📧", layout="wide")
+
+# Function to load Lottie animations from a URL
+@st.cache_data
+def load_lottieurl(url: str):
+    r = requests.get(url)
+    if r.status_code != 200:
+        return None
+    return r.json()
+
+# NLTK Resource Management
 nltk_data_dir = os.path.join(os.getcwd(), "nltk_data")
 if not os.path.exists(nltk_data_dir):
     os.makedirs(nltk_data_dir)
-
-# Add this new directory to NLTK's list of data paths
 if nltk_data_dir not in nltk.data.path:
     nltk.data.path.append(nltk_data_dir)
 
-# Function to download NLTK data if it's not already present
 def download_nltk_data():
-    # THE FIX IS HERE: Added 'punkt_tab' to the list of packages.
     packages = ['stopwords', 'punkt', 'wordnet', 'omw-1.4', 'punkt_tab']
     for package in packages:
         try:
-            # A more robust check for different package types (corpora, tokenizers, etc.)
             resource_name = f"tokenizers/{package}" if package in ['punkt', 'punkt_tab'] else f"corpora/{package}"
             nltk.data.find(resource_name)
         except LookupError:
-            st.info(f"Downloading NLTK package: {package}...")
             nltk.download(package, download_dir=nltk_data_dir, quiet=True)
-            st.info(f"'{package}' downloaded.")
 
-# Run the download function at app startup
 download_nltk_data()
 
-# --- Preprocessing Function (MUST be identical to the one used for training) ---
+# --- Preprocessing and Model Loading (Cached for performance) ---
 @st.cache_resource
 def get_preprocessing_tools():
     lemmatizer = WordNetLemmatizer()
@@ -45,69 +50,92 @@ def get_preprocessing_tools():
 lemmatizer, stop_words_set = get_preprocessing_tools()
 
 def improved_preprocess_text(text):
-    if not isinstance(text, str):
-        text = str(text)
+    if not isinstance(text, str): text = str(text)
     text = text.lower()
     text = re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)
     text = re.sub(r'\S*@\S*\s?', '', text)
     text = re.sub(r'\d+', '', text)
     text = text.translate(str.maketrans('', '', string.punctuation))
-    
-    try:
-        tokens = word_tokenize(text)
-    except Exception as e:
-        st.error(f"Tokenization failed: {e}")
-        return ""
-
+    tokens = word_tokenize(text)
     processed_tokens = [lemmatizer.lemmatize(word) for word in tokens if word.isalpha() and word not in stop_words_set]
     return " ".join(processed_tokens)
 
-# --- Load the Saved Model Pipeline ---
 @st.cache_resource
 def load_model():
     try:
         with open('spam_detector_svm_pipeline.pkl', 'rb') as file:
             model_pipeline = pickle.load(file)
         return model_pipeline
-    except FileNotFoundError:
-        st.error("Model file not found. Please ensure 'spam_detector_svm_pipeline.pkl' is in the GitHub repository.")
-        return None
-    except Exception as e:
-        st.error(f"An error occurred while loading the model: {e}")
+    except Exception:
         return None
 
 model_pipeline = load_model()
 
-# --- Streamlit App Interface ---
-st.set_page_config(page_title="Spam Detector", layout="wide")
+# --- Custom CSS for Styling ---
+st.markdown("""
+<style>
+    .stApp {
+        background: #f0f2f6;
+    }
+    .stButton>button {
+        width: 100%;
+        border-radius: 20px;
+        border: 1px solid #4B8BBE;
+        background-color: #4B8BBE;
+        color: white;
+        transition: all 0.3s ease-in-out;
+    }
+    .stButton>button:hover {
+        background-color: white;
+        color: #4B8BBE;
+        border: 1px solid #4B8BBE;
+    }
+    .stTextArea>div>div>textarea {
+        background-color: #ffffff;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
+# --- App Layout ---
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    st.title("Spam Email & SMS Detector")
+    st.markdown("Enter a message to classify it as **Spam** or **Ham** (legitimate). Our AI model will analyze it instantly.")
     
-st.title("📧 Spam Email & SMS Detector")
-st.markdown("Enter a message below to classify it as either **Spam** or **Ham** (legitimate).")
-st.markdown("---")
-
-user_input = st.text_area("Enter the message to check:", height=150, placeholder="Type or paste your message here...")
-
-if st.button("Classify Message", type="primary"):
-    if model_pipeline is not None:
-        if user_input.strip():
-            processed_input = improved_preprocess_text(user_input)
-            if processed_input:
+    user_input = st.text_area("Enter the message to check:", height=200, placeholder="E.g., 'Congratulations! You've won a free prize...'")
+    
+    if st.button("🔍 Classify Message", type="primary"):
+        if model_pipeline and user_input.strip():
+            # Add a spinner for a better user experience
+            with st.spinner('Analyzing your message...'):
+                time.sleep(1) # Simulate processing time
+                
+                processed_input = improved_preprocess_text(user_input)
                 prediction = model_pipeline.predict([processed_input])
+                
                 st.markdown("---")
                 if prediction[0] == 1:
-                    st.error("### 🚨 Prediction: SPAM")
+                    st.error("### 🚨 Prediction: This message is likely SPAM.")
                 else:
-                    st.success("### ✅ Prediction: HAM (Legitimate)")
-        else:
+                    st.success("### ✅ Prediction: This message is likely HAM (Legitimate).")
+        elif not user_input.strip():
             st.warning("Please enter a message to classify.")
-    else:
-        st.error("The model could not be loaded. The application cannot make predictions.")
+        else:
+            st.error("Model not loaded. The application cannot make predictions.")
+
+with col2:
+    # Lottie animation
+    lottie_url = "https://lottie.host/80753066-e883-4a30-a212-914917a26c48/6r1H1Z68sS.json"
+    lottie_json = load_lottieurl(lottie_url)
+    if lottie_json:
+        st_lottie(lottie_json, speed=1, height=300, key="initial")
 
 # --- Project Information Sidebar ---
 st.sidebar.title("About the Project")
 st.sidebar.info(
-    "This is an AI Mini-Project designed to classify messages as spam or ham. "
-    "It uses a Linear SVM model trained on the Kaggle SMS Spam Collection dataset."
+    "This AI Mini-Project uses a Linear SVM model trained on the Kaggle SMS Spam Collection dataset to classify messages."
 )
 st.sidebar.header("Group Members")
 st.sidebar.markdown("""
