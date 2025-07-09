@@ -9,10 +9,27 @@ from nltk.stem import WordNetLemmatizer
 
 # --- NLTK Resource Setup ---
 # These are downloaded once when the app starts up on the server
-nltk.download('stopwords', quiet=True)
-nltk.download('punkt', quiet=True)
-nltk.download('wordnet', quiet=True)
-nltk.download('omw-1.4', quiet=True)
+try:
+    nltk.data.find('tokenizers/punkt')
+except nltk.downloader.DownloadError:
+    nltk.download('punkt', quiet=True)
+try:
+    nltk.data.find('corpora/stopwords')
+except nltk.downloader.DownloadError:
+    nltk.download('stopwords', quiet=True)
+try:
+    nltk.data.find('corpora/wordnet')
+except nltk.downloader.DownloadError:
+    nltk.download('wordnet', quiet=True)
+try:
+    nltk.data.find('corpora/omw-1.4')
+except nltk.downloader.DownloadError:
+    nltk.download('omw-1.4', quiet=True)
+# Explicitly add the one that was causing issues
+try:
+    nltk.data.find('tokenizers/punkt_tab')
+except nltk.downloader.DownloadError:
+    nltk.download('punkt_tab', quiet=True)
 
 # --- Preprocessing Function (MUST be identical to the one used for training) ---
 lemmatizer = WordNetLemmatizer()
