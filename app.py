@@ -6,18 +6,42 @@ import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
+import os
 
-# --- NLTK Resource Setup ---
-# This is a more robust way to ensure the necessary data is downloaded on Streamlit Cloud.
-# We call download directly. It will only download if the resource is missing.
-nltk.download('stopwords', quiet=True)
-nltk.download('punkt', quiet=True)
-nltk.download('wordnet', quiet=True)
-nltk.download('omw-1.4', quiet=True)
+# --- NLTK Resource Management for Streamlit Cloud ---
+# Define a directory for NLTK data within the app's file system
+nltk_data_dir = os.path.join(os.getcwd(), "nltk_data")
+if not os.path.exists(nltk_data_dir):
+    os.makedirs(nltk_data_dir)
+
+# Add this new directory to NLTK's list of data paths
+if nltk_data_dir not in nltk.data.path:
+    nltk.data.path.append(nltk_data_dir)
+
+# Function to download NLTK data if it's not already present
+def download_nltk_data():
+    packages = ['stopwords', 'punkt', 'wordnet', 'omw-1.4']
+    for package in packages:
+        try:
+            # Check if the data is already in our custom path
+            nltk.data.find(f"tokenizers/{package}" if package == "punkt" else f"corpora/{package}")
+        except LookupError:
+            st.info(f"Downloading NLTK package: {package}...")
+            nltk.download(package, download_dir=nltk_data_dir, quiet=True)
+            st.info(f"'{package}' downloaded.")
+
+# Run the download function
+download_nltk_data()
 
 # --- Preprocessing Function (MUST be identical to the one used for training) ---
-lemmatizer = WordNetLemmatizer()
-stop_words_set = set(stopwords.words('english'))
+# Use a cache decorator to initialize these objects only once
+@st.cache_resource
+def get_lemmatizer_and_stopwords():
+    lemmatizer = WordNetLemmatizer()
+    stop_words_set = set(stopwords.words('english'))
+    return lemmatizer, stop_words_set
+
+lemmatizer, stop_words_set = get_lemmatizer_and_stopwords()
 
 def improved_preprocess_text(text):
     if not isinstance(text, str):
@@ -27,12 +51,11 @@ def improved_preprocess_text(text):
     text = re.sub(r'\S*@\S*\s?', '', text)
     text = re.sub(r'\d+', '', text)
     text = text.translate(str.maketrans('', '', string.punctuation))
-    tokens = word_tokenize(text)
+    tokens = word_tokenize(text) # This should now find the 'punkt' tokenizer data
     processed_tokens = [lemmatizer.lemmatize(word) for word in tokens if word.isalpha() and word not in stop_words_set]
     return " ".join(processed_tokens)
 
 # --- Load the Saved Model Pipeline ---
-# Use a function with a cache decorator to load the model only once
 @st.cache_resource
 def load_model():
     try:
