@@ -138,9 +138,5 @@ st.sidebar.info(
 )
 st.sidebar.header("Group Members")
 st.sidebar.markdown("""
-- **Fredrick M. Morara** - *Group Leader*
-- **Cleophas Kiama**
-- **Trevor Maosa**
-- **Morris Mwangi**
-- **Noelah Amoni**
+- **Fredrick M. Morara**
 """)
